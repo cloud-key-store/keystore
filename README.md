@@ -9,6 +9,9 @@ It performs cryptographic operations using the keys based on user requests.
 The user authentication is password based.
 An example usage is to store GnuPG private keys.
 
+A detailed discussion of our motivation, threat model, design decisions, and evaluation of the CKS is presented in our technical paper: [https://arxiv.org/abs/1804.08569](https://arxiv.org/abs/1804.08569)
+
+
 Building instructions
 ---------------------
 
@@ -35,4 +38,6 @@ Building instructions
 Installation
 ------------
 
-In order for the Remote Attestation to work, fill in the SPID obtained from Intel in ias.cpp
+In order verify the quote recieved during remote attestation, you need access to the Intel Attestation Service (IAS). 
+This requires registering with Intel via [this form](https://software.intel.com/formfill/sgx-onboarding).
+Once registered, set your assigned Service Provider ID (SPID) in the ias.cpp file.
