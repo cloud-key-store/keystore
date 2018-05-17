@@ -48,6 +48,7 @@ INTEL_IPP ?= /opt/intel/ipp
 SGX_MODE ?= HW
 SGX_ARCH ?= x64
 SGX_DEBUG ?= 1
+SIGNING_KEY ?= src/enclave/enclave.pem
 
 ifeq ($(shell getconf LONG_BIT), 32)
 	SGX_ARCH := x86
@@ -345,7 +346,7 @@ $(Build_Dir)/enclave/$(Enclave_Name): $(Generated_Dir)/enclave_t.o $(Enclave_Cpp
 	@echo "LINK =>  $@"
 
 $(Build_Dir)/enclave/$(Signed_Enclave_Name): $(Build_Dir)/enclave/$(Enclave_Name)
-	@$(SGX_ENCLAVE_SIGNER) sign -key src/enclave/enclave_private.pem \
+	@$(SGX_ENCLAVE_SIGNER) sign -key $(SIGNING_KEY) \
 		-enclave $(Build_Dir)/enclave/$(Enclave_Name) \
 		-out $@ -config $(Enclave_Config_File)
 	@echo "SIGN =>  $@"
