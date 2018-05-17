@@ -1,5 +1,5 @@
-Cloud Key Store -- secure storage for private credentials
-=========================================================
+Cloud Key Store - secure storage for private credentials
+========================================================
 
 Introduction
 ------------
