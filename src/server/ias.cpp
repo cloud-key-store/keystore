@@ -105,8 +105,7 @@ static spid_t g_spid = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 int ias_get_spid( spid_t *p_spid )
 {
     if (NULL != p_spid) {
-        memcpy_s(p_spid, sizeof(spid_t), &g_spid,
-                 sizeof(spid_t));
+        memcpy(p_spid, &g_spid, sizeof(spid_t));
     } else {
         return -1;
     }
