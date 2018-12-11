@@ -48,7 +48,8 @@
 #define _RA_H
 
 #include <stdint.h>
-#include "ecp.h"
+
+#define ECP_KEY_SIZE 64
 
 /*Key Derivation Function ID : 0x0001  AES-CMAC Entropy Extraction and Key Expansion*/
 const uint16_t AES_CMAC_KDF_ID = 0x0001;
