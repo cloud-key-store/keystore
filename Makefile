@@ -150,7 +150,7 @@ App_Cpp_Flags := $(App_C_Flags) -std=c++11
 
 App_Libs :=   -L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) \
                 $(B64_Link)           $(LibCrypto_Link)    \
-                $(NrtUke_Link)        $(NrtTke_Link)       \
+                $(NrtUke_Link)        \
                 -lcurl -pthread
 
 App_Link_Flags := $(SGX_COMMON_CFLAGS) $(App_Libs)

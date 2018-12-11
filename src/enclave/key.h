@@ -20,8 +20,6 @@
 #include <string>
 #include <sgx_trts.h>
 #include <sgx_tcrypto.h>
-// #include "sgx_tae_service.h"
-// #include "sgx_ecp_types.h"
 
 typedef enum _key_type_t
 {
