@@ -115,8 +115,7 @@ else
 	Urts_Library_Name := sgx_urts
 endif
 
-Server_Cpp_Files := crypto/ecp.cpp    \
-			logger/logger.cpp \
+Server_Cpp_Files := logger/logger.cpp \
 			server/main.cpp   \
 			server/cks.cpp    \
 			server/ias.cpp    \
