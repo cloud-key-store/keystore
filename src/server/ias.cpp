@@ -22,7 +22,6 @@
 #include <curl/curl.h>
 
 #include "ias.h"
-#include "sample_libcrypto.h"
 
 #ifndef CERT_PATH
 #define CERT_PATH "/etc/ssl/certs/ias_sgx.pem"
