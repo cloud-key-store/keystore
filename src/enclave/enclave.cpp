@@ -45,21 +45,20 @@
  */
 
 #include <map>
+#include <vector>
 
 #include <assert.h>
 #include <nrt_tke.h>
 #include <sgx_tcrypto.h>
 #include <string.h>
 #include <ippcp.h>
-
 #include "sexp.h"
 #include "key.h"
 #include "rsa.h"
 #include "ecc.h"
-
 #include "enclave_t.h"
 
-static std::map<user_id_t, struct user_key> g_users;
+static std::map<user_id_t, std::vector<struct user_key> > g_users;
 
 #define DH_PUBKEY_LENGTH 64
 
@@ -118,7 +117,7 @@ sgx_status_t key_derivation(const sgx_ec256_dh_shared_t* shared_key,
 
 #endif
 
-// This ecall is a wrapper of nrt_ra_init to create the trusted
+// This ecall is a wrapper of sgx_ra_init to create the trusted
 // KE exchange key context needed for the remote attestation
 // SIGMA API's. Input pointers aren't checked since the trusted stubs
 // copy them into EPC memory.
@@ -177,70 +176,6 @@ sgx_status_t SGXAPI ecall_enclave_ra_close(
     return ret;
 }
 
-
-// Verify the mac sent in att_result_msg from the SP using the
-// MK key. Input pointers aren't checked since the trusted stubs
-// copy them into EPC memory.
-//
-//
-// @param context The trusted KE library key context.
-// @param p_message Pointer to the message used to produce MAC
-// @param message_size Size in bytes of the message.
-// @param p_mac Pointer to the MAC to compare to.
-// @param mac_size Size in bytes of the MAC
-//
-// @return SGX_ERROR_INVALID_PARAMETER - MAC size is incorrect.
-// @return Any error produced by tKE  API to get SK key.
-// @return Any error produced by the AESCMAC function.
-// @return SGX_ERROR_MAC_MISMATCH - MAC compare fails.
-
-sgx_status_t verify_att_result_mac(sgx_ra_context_t context,
-                                   uint8_t* p_message,
-                                   size_t message_size,
-                                   uint8_t* p_mac,
-                                   size_t mac_size)
-{
-    sgx_status_t ret;
-    sgx_ec_key_128bit_t mk_key;
-
-    if(mac_size != sizeof(sgx_mac_t))
-    {
-        ret = SGX_ERROR_INVALID_PARAMETER;
-        return ret;
-    }
-    if(message_size > UINT32_MAX)
-    {
-        ret = SGX_ERROR_INVALID_PARAMETER;
-        return ret;
-    }
-
-    do {
-        uint8_t mac[SGX_CMAC_MAC_SIZE] = {0};
-
-        ret = nrt_ra_get_keys(context, SGX_RA_KEY_MK, &mk_key);
-        if(SGX_SUCCESS != ret)
-        {
-            break;
-        }
-        ret = sgx_rijndael128_cmac_msg(&mk_key,
-                                       p_message,
-                                       (uint32_t)message_size,
-                                       &mac);
-        if(SGX_SUCCESS != ret)
-        {
-            break;
-        }
-        if(0 == consttime_memequal(p_mac, mac, sizeof(mac)))
-        {
-            ret = SGX_ERROR_MAC_MISMATCH;
-            break;
-        }
-
-    }
-    while(0);
-
-    return ret;
-}
 
 static sgx_status_t authenticate( const struct sexp *sexp, user_id_t user_id ) {
     const char* username;
@@ -339,6 +274,22 @@ static sgx_status_t decrypt( nrt_ra_context_t context, const struct sexp *sexp,
     return SGX_SUCCESS;
 }
 
+static void add_key(user_id_t user_id, struct user_key *key)
+{
+  key->key_no = g_users[user_id].size() + 1;
+
+  // Second ECC key is ECDH(18), others are ECDSA(19)
+  if( key->key_type == EC_256_KEY )
+    if( key->key_no == 2 )
+      key->key_algo = 18;
+    else
+      key->key_algo = 19;
+  else
+    key->key_algo = 1;
+
+  g_users[user_id].push_back(*key);
+}
+
 static uint32_t parse_timestamp( const unsigned char* ts_str, int ts_len )
 {
   uint32_t ts = 0;
@@ -391,6 +342,7 @@ sgx_status_t ecall_process(nrt_ra_context_t context,
     struct sexp *sexp, *op_sexp, *decrypted_sexp;
     user_id_t user_id;
     struct user_key key;
+    key.key_no = 0;
 
     if( max_res_len < SGX_RSA3072_KEY_SIZE )
         return SGX_ERROR_INVALID_PARAMETER;
@@ -431,38 +383,85 @@ sgx_status_t ecall_process(nrt_ra_context_t context,
     }
 
     if( !strcmp( operation, "writekey" ) ) {
-      if( fill_key(sexp, &key) == SGX_SUCCESS ) {
-        g_users[user_id] = key;
+      if( (ret = fill_key(sexp, &key)) == SGX_SUCCESS ) {
+        add_key(user_id, &key);
         memcpy(result, "OK", 2);
         *res_len = 2;
-      } else
-        ret = SGX_ERROR_UNEXPECTED;
+      }
+    }
+
+    else if( !strcmp( operation, "setkeytype" ) ) {
+      // Do not let to set the key type if key already exists
+      if( !g_users[user_id].empty() ) {
+        ret = SGX_ERROR_INVALID_PARAMETER;
+      } else {
+        const unsigned char* key_type = NULL;
+        if( (key_type = sexp_get_val( sexp, "keytypestr" )) != NULL) {
+          if( !strcmp( (const char*)key_type, "rsa" ) )
+            key.key_type = RSA_3072_KEY;
+          else if( !strcmp( (const char*)key_type, "ecc" ) )
+            key.key_type = EC_256_KEY;
+          else {
+            ret = SGX_ERROR_INVALID_PARAMETER;
+            goto out;
+          }
+
+          key.key_algo = 0;
+          g_users[user_id].push_back(key);
+          memcpy(result, "OK", 2);
+          *res_len = 2;
+        }
+      }
     }
 
     else if( !strcmp( operation, "genkey" ) ) {
-      uint8_t n[SGX_RSA3072_KEY_SIZE];
-      if( rsa_gen_key(sexp, n, res_len, &key) == SGX_SUCCESS ) {
-        // The result is in litte-endian, change it to big
-        g_users[user_id] = key;
-        swap_endianness(n, SGX_RSA3072_KEY_SIZE);
-        memcpy(result, n, *res_len);
-      } else
-        ret = SGX_ERROR_UNEXPECTED;
+      key.key_type = EC_256_KEY;
+
+      if( !g_users[user_id].empty() ) {
+        key.key_type = g_users[user_id][0].key_type;
+        // Remove dummy key (only used to pass key type from setkeytype)
+        // Or clear keys when there are 3 of them
+        if( !g_users[user_id][0].key_algo || (g_users[user_id].size() == 3) ) {
+          g_users[user_id].clear();
+        }
+      }
+
+      if( (ret = gen_key(&key)) == SGX_SUCCESS ) {
+        add_key(user_id, &key);
+
+        ret = public_key_to_sexp_buffer_short(&key, result, max_res_len,
+              (int*)res_len);
+      }
+    }
+
+    else if( !strcmp( operation, "readkey" ) ) {
+      if( g_users[user_id].empty() ) {
+          memcpy(result, "OK", 2);
+          *res_len = 2;
+          ret = SGX_SUCCESS;
+          goto out;
+      }
+
+      print_string_ocall("Reading key\n");
+      ret = read_key_buffer(&g_users[user_id][0], result,
+            max_res_len, (int*)res_len);
     }
 
     else if( !strcmp( operation, "pksign" ) ) {
       uint8_t s[SGX_RSA3072_KEY_SIZE];
-      if( rsa_sign(sexp, s, res_len, g_users[user_id] ) == SGX_SUCCESS ) {
+      if( (ret = rsa_sign(sexp, s, res_len,
+                          g_users[user_id][0] )) == SGX_SUCCESS ) {
         // The result is in litte-endian, change it to big
+        // TODO for the moment sign with key at slot 0
         swap_endianness(s, SGX_RSA3072_KEY_SIZE);
         memcpy(result, s, *res_len);
-      } else
-        ret = SGX_ERROR_UNEXPECTED;
+      }
     }
 
     else if( !strcmp( operation, "pkdecrypt" ) ) {
       uint8_t d[SGX_RSA3072_KEY_SIZE];
-      if( rsa_decrypt(sexp, d, res_len, g_users[user_id] ) == SGX_SUCCESS ) {
+      if( (ret = rsa_decrypt(sexp, d, res_len,
+                             g_users[user_id][0] )) == SGX_SUCCESS ) {
         // The result is in litte-endian, change it to big
         swap_endianness(d, SGX_RSA3072_KEY_SIZE);
         memcpy(result, d, *res_len);
@@ -473,20 +472,23 @@ sgx_status_t ecall_process(nrt_ra_context_t context,
     else if( !strcmp( operation, "keyattr" ) ) {
       uint8_t keyfpr[20] = {0};
       print_string_ocall("Obtaining key finger print\n");
-      if( hash_public_key(&(g_users[user_id]), keyfpr) == SGX_SUCCESS ) {
-        struct sexp *fpr_symbol, *fpr, *fpr_list;
-        sexp_new_string( &fpr_symbol, "keyfpr" );
-        sexp_new_string_len( &fpr, (char*)keyfpr, 20 );
-        // print_byte_array_stdout((char*)keyfpr, 20);
-        sexp_new_list( &fpr_list );
-        sexp_add( fpr_symbol, fpr );
-        sexp_add( fpr_list, fpr_symbol );
-
-        *res_len = sexp_serialize( fpr_list, (char*)result, max_res_len );
-        sexp_free( fpr_list );
+      struct sexp* sexp, *keyattr;
+      if( g_users[user_id].empty() ) {
+        key.key_type = EC_256_KEY;
+        key.key_algo = 18;
+        algo_to_sexp(&key, &sexp);
+        *res_len = sexp_serialize(sexp, (char*)result, max_res_len);
+        sexp_free(sexp);
       } else {
-        print_string_ocall("Could not calculate key finger print\n");
-        ret = SGX_ERROR_UNEXPECTED;
+        sexp_new_list(&sexp);
+        for (std::vector<struct user_key>::iterator it = g_users[user_id].begin();
+             it != g_users[user_id].end(); ++it) {
+          algo_to_sexp(it, &keyattr);
+          sexp_add(sexp, keyattr);
+        }
+
+        *res_len = sexp_serialize(sexp, (char*)result, max_res_len);
+        sexp_free(sexp);
       }
     }
 

@@ -20,11 +20,18 @@
 #include "sexp.h"
 
 sgx_status_t ecc_fill_key(const struct sexp* sexp, struct user_key *key);
-sgx_status_t ecc_gen_key(const struct sexp* sexp, uint8_t* pub_key_q,
-        uint32_t *res_len, struct user_key *key);
+sgx_status_t ecc_gen_key(struct user_key *key);
 sgx_status_t ecc_sign(const struct sexp* sexp, uint8_t* signature,
         uint32_t *res_len, struct user_key key);
 sgx_status_t ecc_decrypt(const struct sexp* sexp, uint8_t* decryption,
         uint32_t *res_len, struct user_key key);
+
+sgx_status_t ecc_pub_key_to_sexp_short(const struct user_key* key,
+        struct sexp** sexp);
+sgx_status_t ecc_pub_key_to_sexp(const struct user_key* key,
+        struct sexp** sexp);
+sgx_status_t ecc_read_key(const struct user_key* key,
+        struct sexp** sexp);
+sgx_status_t ecc_algo_to_sexp(const struct user_key* key, struct sexp** sexp);
 
 #endif

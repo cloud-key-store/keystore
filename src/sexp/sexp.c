@@ -76,6 +76,43 @@ void sexp_add( struct sexp* parent, struct sexp* sibling ) {
   cur->next = sibling;
 }
 
+struct sexp* sexp_add_list( struct sexp* sexp ) {
+  struct sexp *sexp_list;
+  sexp_new_list( &sexp_list );
+  sexp_add( sexp, sexp_list );
+
+  return sexp_list;
+}
+
+struct sexp* sexp_add_string( struct sexp* sexp, const char* val ) {
+  struct sexp *sexp_str;
+  sexp_new_string( &sexp_str, val );
+  sexp_add( sexp, sexp_str );
+
+  return sexp_str;
+}
+
+void sexp_new_pair( struct sexp** sexp, const char* key, const char* value ) {
+  struct sexp *sexp_key, *sexp_value;
+
+  sexp_new_string( &sexp_key, key );
+  sexp_new_string( &sexp_value, value );
+  sexp_new_list( sexp );
+  sexp_add( sexp_key, sexp_value );
+  sexp_add( *sexp, sexp_key );
+}
+
+void sexp_new_pair_len( struct sexp** sexp, const char* key,
+    const char* value, int len ) {
+  struct sexp *sexp_key, *sexp_value;
+
+  sexp_new_string( &sexp_key, key );
+  sexp_new_string_len( &sexp_value, value, len );
+  sexp_new_list( sexp );
+  sexp_add( sexp_key, sexp_value );
+  sexp_add( *sexp, sexp_key );
+}
+
 static char numbers[] = "0123456789";
 static bool str_contains( const char* str, char c ) {
   for( const char* s = str; *s != '\0'; s++ )
@@ -191,6 +228,14 @@ struct sexp* sexp_get( const struct sexp* sexp, const char* key ) {
   } while (next != NULL);
 
   return NULL;
+}
+
+const unsigned char* sexp_get_val( const struct sexp* sexp, const char* key ) {
+  struct sexp* pair;
+  if( (pair = sexp_get( sexp, key )) == NULL )
+    return NULL;
+
+  return sexp_get_str( pair, NULL );
 }
 
 static void advance_parser(const char** cur, unsigned int* consumed,

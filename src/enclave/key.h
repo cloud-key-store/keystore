@@ -45,6 +45,8 @@ struct ec256_key_t
 struct user_key
 {
     key_type_t key_type;
+    int key_no;
+    int key_algo;
     union {
         sgx_rsa3072_key_t rsa_key;
         struct ec256_key_t ec_key;
@@ -55,7 +57,16 @@ struct user_key
 };
 
 sgx_status_t hash_public_key(const struct user_key *key, unsigned char* buffer);
+sgx_status_t gen_key(struct user_key *key);
+sgx_status_t public_key_to_sexp_buffer_short(const struct user_key *key,
+                 unsigned char* buffer, int len, int* res_len);
+sgx_status_t public_key_to_sexp_buffer(const struct user_key *key,
+                 unsigned char* buffer, int len, int* res_len);
+sgx_status_t read_key_buffer(const struct user_key *key,
+                      unsigned char* buffer, int len, int *res_len);
+sgx_status_t algo_to_sexp(const struct user_key *key, struct sexp** sexp);
 
 void swap_endianness(uint8_t *buf, int len);
+void swap_endianness_to(uint8_t *res, uint8_t *buf, int len);
 
 #endif

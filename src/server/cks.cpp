@@ -20,7 +20,6 @@
 
 #include <nrt_tke.h>
 #include <nrt_ukey_exchange.h>
-
 #include "cks.h"
 #include "enclave_u.h"
 

@@ -144,7 +144,8 @@ int sgx_process(char* buf, int buf_len, uint8_t *res, uint32_t *res_len)
     log_debug(l, "Calling enclave, %d bytes for the result buffer.\n", *res_len);
     ret = enclave_process(eid, ra_context,
             (uint8_t*)buf, buf_len, res, res_len);
-    log_debug(l, "Enclave returned, %d bytes of the result buffer.\n", *res_len);
+    log_debug(l, "Enclave returned with status %d and %d "
+        "bytes of the result buffer.\n", ret, *res_len);
 
     if (ret != SGX_SUCCESS)
         return ret;
@@ -222,9 +223,9 @@ int handle_client(int sd)
         if( n == 0 )
             break;
 
-        sgx_process( buf, n, res, &res_len );
-        write_all(sd, res, res_len);
-        ret = 0;
+        if( (ret = sgx_process( buf, n, res, &res_len )) == 0 ) {
+          write_all(sd, res, res_len);
+        }
     }
 
     close(sd);

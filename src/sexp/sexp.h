@@ -47,14 +47,20 @@ struct sexp {
     } content;
 };
 
-void sexp_new_list( struct sexp** sexp );
 void sexp_add( struct sexp* parent, struct sexp* sibling );
+void sexp_free( struct sexp* sexp );
+void sexp_new_list( struct sexp** sexp );
 void sexp_new_string( struct sexp** sexp, const char* input );
 void sexp_new_string_len( struct sexp** sexp, const char* input, int len );
-void sexp_free( struct sexp* sexp );
+void sexp_new_pair( struct sexp** sexp, const char* key, const char* value );
+void sexp_new_pair_len( struct sexp** sexp, const char* key,
+    const char* value, int len );
+struct sexp* sexp_add_string( struct sexp* sexp, const char* val );
+struct sexp* sexp_add_list( struct sexp* sexp );
 
 const unsigned char* sexp_get_str( const struct sexp* sexp, int* len );
 struct sexp* sexp_get( const struct sexp* sexp, const char* key );
+const unsigned char* sexp_get_val( const struct sexp* sexp, const char* key );
 
 int sexp_serialize( const struct sexp* sexp, char* buf, int len );
 int sexp_parse( struct sexp** sexp, const char* buf, int buf_len );

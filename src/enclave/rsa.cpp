@@ -44,11 +44,10 @@
  * limitations under the License.
  */
 
+#include "rsa.h"
 #include <sgx_tcrypto.h>
 #include <string.h>
 #include <ippcp.h>
-
-#include "rsa.h"
 
 static unsigned char asn256[19] = /* Object ID is  2.16.840.1.101.3.4.2.1 */
   { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
@@ -67,6 +66,7 @@ sgx_status_t rsa_fill_key(const struct sexp* sexp, struct user_key *key)
     const Ipp32u one[] = {0x1};
 
     key->key_type = RSA_3072_KEY;
+    key->key_algo = 1;
     rsa_key = &(key->key.rsa_key);
 
     n = (uint8_t*)sexp_get_str( sexp_get( sexp, "n" ), &n_len );
@@ -114,52 +114,32 @@ sgx_status_t rsa_fill_key(const struct sexp* sexp, struct user_key *key)
     return SGX_SUCCESS;
 }
 
-sgx_status_t rsa_gen_key(const struct sexp* sexp, uint8_t* pub_key_n,
-        uint32_t *res_len, struct user_key* key)
+sgx_status_t rsa_gen_key(struct user_key* key)
 {
-    uint8_t *n, *p, *q;
-    uint8_t e[] = {0x01, 0x00, 0x01};
+    uint8_t n[SGX_RSA3072_KEY_SIZE], d[SGX_RSA3072_PRI_EXP_SIZE];
+    uint8_t p[SGX_RSA3072_KEY_SIZE/2], q[SGX_RSA3072_KEY_SIZE/2],
+            dmp1[SGX_RSA3072_KEY_SIZE/2], dmq1[SGX_RSA3072_KEY_SIZE/2],
+            iqmp[SGX_RSA3072_KEY_SIZE/2];
+    sgx_status_t ret;
+
     sgx_rsa3072_key_t *rsa_key;
-    int n_len, p_len, q_len, e_len, d_len;
-    IppsBigNumState *n_bn, *p_bn, *q_bn, *one_bn, *r_bn, *e_bn, *d_bn;
-    IppsBigNumSGN d_sgn;
-    const Ipp32u one[] = {0x1};
+
+    uint8_t e[] = {0x01, 0x00, 0x01, 0x00};
 
     key->key_type = RSA_3072_KEY;
+    key->key_algo = 1;
     rsa_key = &(key->key.rsa_key);
 
-    n_len = SGX_RSA3072_KEY_SIZE;
-    p_len = q_len = SGX_RSA3072_KEY_SIZE / 2;
-    e_len = 3;
+    ret = sgx_create_rsa_key_pair( SGX_RSA3072_KEY_SIZE,
+                                   SGX_RSA3072_PUB_EXP_SIZE,
+                                   n, d, e, p, q,
+                                   dmp1, dmq1, iqmp );
+    if( ret != SGX_SUCCESS )
+      return ret;
 
-    sgx_ipp_newBN((const Ipp32u*)n, n_len, &n_bn);
-    sgx_ipp_newBN((const Ipp32u*)n, n_len, &r_bn);
-    sgx_ipp_newBN((const Ipp32u*)n, n_len, &d_bn);
-    sgx_ipp_newBN((const Ipp32u*)p, p_len, &p_bn);
-
-    sgx_ipp_newBN((const Ipp32u*)q, q_len, &q_bn);
-    if( sgx_ipp_newBN((const Ipp32u*)e, e_len+1, &e_bn) != ippStsNoErr ) {
-        return SGX_ERROR_INVALID_PARAMETER;
-    }
-
-    sgx_ipp_newBN(one, sizeof(one), &one_bn);
-
-    ippsSub_BN(p_bn, one_bn, p_bn);
-    ippsSub_BN(q_bn, one_bn, q_bn);
-    ippsMul_BN(p_bn, q_bn, r_bn);
-    ippsModInv_BN(e_bn, r_bn, d_bn);
-
-    ippsGet_BN(&d_sgn, &d_len, (Ipp32u*)(rsa_key->d), d_bn);
     memcpy(rsa_key->mod, n, SGX_RSA3072_KEY_SIZE);
-    memcpy(rsa_key->e, e, e_len);
-
-    free(n_bn);
-    free(r_bn);
-    free(d_bn);
-    free(p_bn);
-    free(q_bn);
-    free(e_bn);
-    free(one_bn);
+    memcpy(rsa_key->d, d, SGX_RSA3072_PRI_EXP_SIZE);
+    memcpy(rsa_key->e, e, SGX_RSA3072_PUB_EXP_SIZE);
 
     return SGX_SUCCESS;
 }
@@ -193,6 +173,7 @@ static sgx_status_t pkcs11_frame(const uint8_t* hash, int hash_len, uint8_t* fra
 
     return SGX_SUCCESS;
 }
+
 
 sgx_status_t rsa_sign(const struct sexp* sexp, uint8_t* signature,
                       uint32_t *res_len, struct user_key key)
@@ -302,3 +283,33 @@ static sgx_status_t rsa_exponentiation(Ipp32u* mod, IppsBigNumState* f_bn, IppsB
 
     return SGX_SUCCESS;
 }
+
+sgx_status_t rsa_pub_key_to_sexp(const struct user_key* key, struct sexp** sexp)
+{
+  struct sexp *n_sexp, *e_sexp;
+  uint8_t n[SGX_RSA3072_KEY_SIZE], e[SGX_RSA3072_PUB_EXP_SIZE];
+  sgx_rsa3072_key_t rsa_key = key->key.rsa_key;
+
+  swap_endianness_to(n, rsa_key.mod, SGX_RSA3072_KEY_SIZE);
+  swap_endianness_to(e, rsa_key.e, SGX_RSA3072_PUB_EXP_SIZE);
+
+  sexp_new_pair_len( &n_sexp, "n", (const char*)n, SGX_RSA3072_KEY_SIZE );
+  sexp_new_pair_len( &e_sexp, "e", (const char*)e, SGX_RSA3072_PUB_EXP_SIZE );
+
+  sexp_new_list( sexp );
+  sexp_add( n_sexp, e_sexp );
+  sexp_add( *sexp, n_sexp );
+
+  return SGX_SUCCESS;
+}
+
+sgx_status_t rsa_algo_to_sexp(const struct user_key* key, struct sexp** sexp)
+{
+  return SGX_SUCCESS;
+}
+
+sgx_status_t rsa_read_key(const struct user_key* key, struct sexp** sexp)
+{
+  return SGX_SUCCESS;
+}
+
